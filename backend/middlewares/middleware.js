@@ -1,5 +1,5 @@
-const jwt = require("express-jwt");
-const JWT_SECRET = require('../config')
+const jwt = require("jsonwebtoken");
+const {JWT_SECRET} = require('../config')
 
 function authMiddleware(req, res, next){
 

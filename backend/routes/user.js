@@ -1,14 +1,14 @@
 const express = require('express');
 const zod = require('zod');
-const { User } = require('../db');
-const jwt = require("express-jwt");
-const JWT_SECRET = require('../config');
+const { User, Account } = require('../db');
+const jwt = require("jsonwebtoken");
+const {JWT_SECRET} = require('../config');
 const { authMiddleware } = require('../middlewares/middleware');
 
 const userRouter = express.Router();
 
 const signupSchema = zod.object({
-    username: zod.string(),
+  username: zod.string(),
 	firstName: zod.string(),
 	lastName: zod.string(),
 	password: zod.string()
@@ -37,28 +37,28 @@ userRouter.post("/signup", async (req,res) => {
         username: body.username
     })
 
-    if(user._id){
+    if(user){
         return res.status(411).json({
             message: "Email already taken / Incorrect inputs"
         })
     }
 
-      var hashedPassword = await newUser.createHash(req.body.password);
-
       const newUser = new User({
         username: req.body.username,
-        password: hashedPassword,
+        password: req.body.password,
         firstName: req.body.firstName,
         lastName: req.body.lastName
       });
-  
+
+      let hashedPassword = await newUser.createHash(req.body.password);
+      newUser.password = hashedPassword
       const dbUser = await newUser.save();
       
       await Account.create({
         userId: dbUser._id,
         balance: 1 + Math.random() * 10000
     })
-      const token = jwt.sign({ userId: dbUser._id},  Buffer.from(JWT_SECRET, 'base64'));
+      const token = jwt.sign({ userId: dbUser._id}, JWT_SECRET);
       return res.status(200).json({
         message: "User created successfully.",
         token: token
@@ -84,7 +84,7 @@ userRouter.post("/signin", async (req, res) => {
       });
     } else {
       if (await user.validatePassword(req.body.password)) {
-        const token = jwt.sign({ userId: user._id},  Buffer.from(JWT_SECRET, 'base64'));
+        const token = jwt.sign({ userId: user._id}, JWT_SECRET);
         return res.status(200).json({
             token: token,
         });
@@ -96,26 +96,45 @@ userRouter.post("/signin", async (req, res) => {
     }
 })
 
-userRouter.put("/user", authMiddleware, async (req, res) => {
-    const body = req.body;
-    const {success} = updateSchema.safeParse(body)
-    if(!success){
-        return res.status(411).json({
-            message: "Incorrect inputs"
-        })
-    }
+userRouter.put("/", authMiddleware, async (req, res) => {
+  const body = req.body;
 
-    await User.updateOne(body,{
-        _id: req.userId
-    })
+  // Validate the request body
+  const { success } = updateSchema.safeParse(body);
+  if (!success) {
+      return res.status(411).json({
+          message: "Incorrect inputs"
+      });
+  }
 
-    res.status(200).json({
-        message: "Updated successfully"
-    })
 
-})
+  try {
+      // Update the user document
+      const result = await User.updateOne(
+          { _id: req.userId }, // Query object
+          { $set: body }       // Update object
+      );
 
-userRouter.get("/user/bulk", authMiddleware, async (req, res) => {
+      // Check if the update was successful
+      if (result.modifiedCount > 0) {
+          return res.status(200).json({
+              message: "Updated successfully"
+          });
+      } else {
+          return res.status(404).json({
+              message: "User not found or no changes made"
+          });
+      }
+  } catch (error) {
+      console.error("Error updating user:", error);
+      return res.status(500).json({
+          message: "Internal server error"
+      });
+  }
+});
+
+
+userRouter.get("/bulk", authMiddleware, async (req, res) => {
     try {
         let filter = {};
         if (req.query.filter) {

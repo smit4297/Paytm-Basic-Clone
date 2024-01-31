@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const bcrypt = require('bcrypt');
 
 main().catch(err => console.log(err));
 
@@ -62,7 +63,7 @@ const userSchema = new mongoose.Schema({
   
   // Validating the candidate password with stored hash and hash function
   userSchema.methods.validatePassword = async function (candidatePassword) {
-    return await bcrypt.compare(candidatePassword, this.password_hash);
+    return await bcrypt.compare(candidatePassword, this.password);
   };
 
   const User = mongoose.model('User', userSchema);
